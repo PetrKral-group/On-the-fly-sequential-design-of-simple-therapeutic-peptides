@@ -1,0 +1,176 @@
+#############################################################
+## JOB DESCRIPTION                                         ##
+#############################################################
+
+# This is what this job does
+
+
+#############################################################
+## ADJUSTABLE PARAMETERS                                   ##
+#############################################################
+CUDASOAintegrate on
+
+
+set inputstr sdp1-side.psf
+set inputcor sdp1-side.pdb
+set inputname eq-c1
+set outputname eq-e2
+
+set temperature    310
+set constP 1
+set PME 1
+
+set MS 0
+set restart 1
+set constr  1
+set FTS 0
+set TS 50000000
+
+structure          $inputstr
+coordinates        $inputcor
+outputName         $outputname
+
+# Continuing a job from the restart files
+if {$restart} {
+binCoordinates     $inputname.restart.coor
+binVelocities      $inputname.restart.vel  ;# remove the "temperature" entry if you use this!
+extendedSystem	   $inputname.restart.xsc
+} 
+
+firsttimestep      $FTS
+
+#############################################################
+## SIMULATION PARAMETERS                                   ##
+#############################################################
+
+# Input
+paraTypeCharmm	    on
+parameters          par_all36_prot.prm
+parameters          par_all36_na.prm
+parameters          par_water_ions.str
+
+
+# NOTE: Do not set the initial velocity temperature if you 
+# have also specified a .vel restart file!
+if {!$restart} {
+temperature         $temperature
+} 
+
+# Periodic Boundary conditions
+# NOTE: Do not set the periodic cell basis if you have also 
+# specified an .xsc restart file!
+if {!$restart} {
+cellBasisVector1    84.90    0.    0.
+cellBasisVector2     0.    109.93  0.
+cellBasisVector3     0.      0.   76.31
+cellOrigin          -0.74    0.76 -2.16
+}
+wrapWater           on
+wrapAll             on
+wrapNearest         on
+
+
+# Force-Field Parameters
+exclude             scaled1-4
+1-4scaling          1.0
+#1-4scaling          0.8333333333
+cutoff              12.
+switching           on
+switchdist          10.
+pairlistdist        13.5
+
+
+# Integrator Parameters
+timestep            2.0
+rigidBonds          all  ;# use all for 2fs steps
+nonbondedFreq       1      ;# use 1 for 2fs steps 
+fullElectFrequency  2      ;# use 2 for 2fs steps 
+stepspercycle       20
+
+
+#PME (for full-system periodic electrostatics)
+if {$PME} {
+PME                 yes
+PMEGridSpacing      1.0
+PMEPencils          1
+}
+
+
+# Constant Temperature Control
+langevin            on    ;# do langevin dynamics
+langevinDamping     1     ;# damping coefficient (gamma) of 5/ps
+langevinTemp        $temperature
+langevinHydrogen    no    ;# don't couple langevin bath to hydrogens
+
+
+# Constant Pressure Control (variable volume)
+if {$constP} {
+useGroupPressure      on  ;# needed for 2fs steps
+useFlexibleCell       no  ;# no for water box, yes for membrane
+useConstantArea       no  ;# no for water box, yes for membrane
+
+langevinPiston        on
+langevinPistonTarget  1.01325 ;#  in bar -> 1 atm
+langevinPistonPeriod  100.
+langevinPistonDecay   50.
+langevinPistonTemp    $temperature
+}
+
+
+restartfreq        5000
+dcdfreq            5000
+xstFreq            5000
+outputEnergies     5000
+outputPressure     5000
+
+
+# Fixed Atoms Constraint (set PDB beta-column to 1)
+if {0} {
+fixedAtoms          on
+fixedAtomsFile      myfixedatoms.pdb
+fixedAtomsCol       B
+}
+
+
+# IMD Settings (can view sim in VMD)
+if {0} {
+IMDon           on
+IMDport         3000    ;# port number (enter it in VMD)
+IMDfreq         1       ;# send every 1 frame
+IMDwait         no      ;# wait for VMD to connect before running?
+}
+
+# Position harmonic constraints
+if {$constr} {
+  Constraints                    yes
+  ConsExp                        2
+  ConsRef                        fix-rot.pdb
+  ConsKFile                      fix-rot.pdb
+  ConskCol                       B
+} 
+
+#extraBonds yes
+#extraBondsFile ss-zn-bonds.txt
+
+#############################################################
+## EXTRA PARAMETERS                                        ##
+#############################################################
+
+# Put here any custom parameters that are specific to 
+# this job (e.g., SMD, TclForces, etc...)
+#colvars    on
+#colvarsConfig   fix-rot.in
+
+
+
+#############################################################
+## EXECUTION SCRIPT                                        ##
+#############################################################
+
+# Minimization
+if {$MS != 0} {
+minimize            $MS
+reinitvels          $temperature
+}
+
+run $TS
